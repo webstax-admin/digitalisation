@@ -25,8 +25,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Download, Edit2, ArrowUpDown } from "lucide-react";
+import { Search, Download, Edit2, ArrowUpDown, GripVertical } from "lucide-react";
 import { toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type Status = "PRO" | "UAT" | "DEV" | "REQ";
 
@@ -50,11 +67,12 @@ const initialData: SoftwareData[] = [
   { url: "12443", sno: "8", software: "CERTS", description: "Certifications", status: "PRO", lastUpdate: "" },
   { url: "13443", sno: "29", software: "EPCs", description: "Marketing campaign data collection from EPCs", status: "UAT", lastUpdate: "" },
   { url: "15443", sno: "31", software: "Suryaghar Scraper", description: "Custom data scraper for Govt website to collect and analyse solar subsidy data by state on a daily basis", status: "PRO", lastUpdate: "" },
-  { url: "16443", sno: "16", software: "WARRANTY", description: "Warranty Certificate Generation System", status: "UAT", lastUpdate: "" },
-  { url: "11443", sno: "7", software: "QAP", description: "Quality Assurance Protocol", status: "UAT", lastUpdate: "" },
-  { url: "", sno: "4", software: "VISA", description: "Premier-Visa-Assist", status: "PRO", lastUpdate: "" },
-  { url: "", sno: "9", software: "WAVE", description: "Welcome & Authenticate Visitor Entry", status: "DEV", lastUpdate: "" },
+  { url: "16443", sno: "16", software: "WARRANTY", description: "Warranty Certificate Generation System", status: "UAT", lastUpdate: "Issed first customer warranty certificate: Oct 24, going live: Oct 27" },
+  { url: "11443", sno: "7", software: "QAP", description: "Quality Assurance Protocol", status: "UAT", lastUpdate: "Currently on 3rd iteration of changes, solidyfying split workflow edge cases for QAP & BOM" },
+  { url: "", sno: "4", software: "VISA", description: "Premier-Visa-Assist", status: "PRO", lastUpdate: "Integrating with Crypto-Esign for verified digital signatures, company seals and stamp paper" },
+  { url: "", sno: "21", software: "SPOT-Admin", description: "Smart Processing Of Tickets for Admin Team", status: "DEV", lastUpdate: "" },
   { url: "", sno: "10", software: "LEAFI", description: "Logistics Enquiry and Finalization for Inbound Logistics", status: "DEV", lastUpdate: "" },
+  { url: "", sno: "9", software: "WAVE", description: "Welcome & Authenticate Visitor Entry", status: "DEV", lastUpdate: "" },
   { url: "", sno: "11", software: "SAMPLES", description: "Sample Trial Tracking System", status: "DEV", lastUpdate: "" },
   { url: "", sno: "12", software: "MEETNBOOK", description: "Meeting Room Booking Management", status: "DEV", lastUpdate: "" },
   { url: "", sno: "13", software: "CARS", description: "Car Booking & Tracking System", status: "DEV", lastUpdate: "" },
@@ -64,10 +82,72 @@ const initialData: SoftwareData[] = [
   { url: "", sno: "18", software: "FABS", description: "Financial Analysis Business Software", status: "REQ", lastUpdate: "" },
   { url: "", sno: "19", software: "DMS", description: "Document Management System", status: "REQ", lastUpdate: "" },
   { url: "", sno: "20", software: "EMS", description: "Expenditure Management System", status: "REQ", lastUpdate: "" },
-  { url: "", sno: "21", software: "SPOT-Admin", description: "Smart Processing Of Tickets for Admin Team", status: "REQ", lastUpdate: "" },
   { url: "", sno: "24", software: "Spares", description: "Spares Management System", status: "REQ", lastUpdate: "" },
   { url: "", sno: "25", software: "Cards", description: "Virtual Card Creation & Management Software", status: "REQ", lastUpdate: "" },
 ];
+
+interface SortableRowProps {
+  row: SoftwareData;
+  onEdit: (row: SoftwareData) => void;
+}
+
+function SortableRow({ row, onEdit }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: row.sno });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className="hover:bg-muted/30 transition-colors"
+    >
+      <TableCell>
+        <button
+          className="cursor-grab active:cursor-grabbing touch-none"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </TableCell>
+      <TableCell className="font-mono text-sm">{row.url || "-"}</TableCell>
+      <TableCell>{row.sno}</TableCell>
+      <TableCell className="font-semibold">{row.software}</TableCell>
+      <TableCell className="max-w-md">
+        <p className="truncate text-muted-foreground">{row.description}</p>
+      </TableCell>
+      <TableCell>
+        <StatusBadge variant={row.status}>{row.status}</StatusBadge>
+      </TableCell>
+      <TableCell className="text-muted-foreground max-w-xs">
+        <p className="truncate">{row.lastUpdate || "-"}</p>
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onEdit(row)}
+          className="gap-2"
+        >
+          <Edit2 className="h-3 w-3" />
+          Edit
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export function SoftwareTable() {
   const [data, setData] = useState<SoftwareData[]>(initialData);
@@ -75,6 +155,13 @@ export function SoftwareTable() {
   const [sortConfig, setSortConfig] = useState<{ key: keyof SoftwareData; direction: "asc" | "desc" } | null>(null);
   const [editingRow, setEditingRow] = useState<SoftwareData | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const handleSort = (key: keyof SoftwareData) => {
     let direction: "asc" | "desc" = "asc";
@@ -128,6 +215,21 @@ export function SoftwareTable() {
     }
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setData((items) => {
+        const oldIndex = items.findIndex((item) => item.sno === active.id);
+        const newIndex = items.findIndex((item) => item.sno === over.id);
+        
+        const newOrder = arrayMove(items, oldIndex, newIndex);
+        toast.success("Row reordered successfully");
+        return newOrder;
+      });
+    }
+  };
+
   const handleExport = () => {
     const headers = ["URL", "SNo", "Software", "Description", "Status", "Last Update"];
     const csvContent = [
@@ -171,78 +273,68 @@ export function SoftwareTable() {
 
       <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="font-semibold">
-                  <button
-                    onClick={() => handleSort("url")}
-                    className="flex items-center gap-1 hover:text-foreground transition-colors"
-                  >
-                    URL
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="font-semibold">
-                  <button
-                    onClick={() => handleSort("sno")}
-                    className="flex items-center gap-1 hover:text-foreground transition-colors"
-                  >
-                    SNo
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="font-semibold">
-                  <button
-                    onClick={() => handleSort("software")}
-                    className="flex items-center gap-1 hover:text-foreground transition-colors"
-                  >
-                    Software
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="font-semibold">Description</TableHead>
-                <TableHead className="font-semibold">
-                  <button
-                    onClick={() => handleSort("status")}
-                    className="flex items-center gap-1 hover:text-foreground transition-colors"
-                  >
-                    Status
-                    <ArrowUpDown className="h-3 w-3" />
-                  </button>
-                </TableHead>
-                <TableHead className="font-semibold">Last Update</TableHead>
-                <TableHead className="font-semibold text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.map((row) => (
-                <TableRow key={row.sno} className="hover:bg-muted/30 transition-colors">
-                  <TableCell className="font-mono text-sm">{row.url || "-"}</TableCell>
-                  <TableCell>{row.sno}</TableCell>
-                  <TableCell className="font-semibold">{row.software}</TableCell>
-                  <TableCell className="max-w-md">
-                    <p className="truncate text-muted-foreground">{row.description}</p>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge variant={row.status}>{row.status}</StatusBadge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{row.lastUpdate || "-"}</TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(row)}
-                      className="gap-2"
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  <TableHead className="w-12"></TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      onClick={() => handleSort("url")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
                     >
-                      <Edit2 className="h-3 w-3" />
-                      Edit
-                    </Button>
-                  </TableCell>
+                      URL
+                      <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      onClick={() => handleSort("sno")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      SNo
+                      <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      onClick={() => handleSort("software")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Software
+                      <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold">Description</TableHead>
+                  <TableHead className="font-semibold">
+                    <button
+                      onClick={() => handleSort("status")}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Status
+                      <ArrowUpDown className="h-3 w-3" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="font-semibold">Last Update</TableHead>
+                  <TableHead className="font-semibold text-right">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                <SortableContext
+                  items={filteredData.map((row) => row.sno)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {filteredData.map((row) => (
+                    <SortableRow key={row.sno} row={row} onEdit={handleEdit} />
+                  ))}
+                </SortableContext>
+              </TableBody>
+            </Table>
+          </DndContext>
         </div>
       </div>
 
