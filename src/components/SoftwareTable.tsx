@@ -25,7 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Download, Edit2, ArrowUpDown, GripVertical } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Search, Download, Edit2, ArrowUpDown, GripVertical, Filter, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -107,11 +112,26 @@ function SortableRow({ row, onEdit }: SortableRowProps) {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const getRowColor = (status: Status) => {
+    switch (status) {
+      case "PRO":
+        return "bg-success/10 hover:bg-success/20";
+      case "UAT":
+        return "bg-warning/10 hover:bg-warning/20";
+      case "DEV":
+        return "bg-info/10 hover:bg-info/20";
+      case "REQ":
+        return "bg-neutral/10 hover:bg-neutral/20";
+      default:
+        return "hover:bg-muted/30";
+    }
+  };
+
   return (
     <TableRow
       ref={setNodeRef}
       style={style}
-      className="hover:bg-muted/30 transition-colors"
+      className={`transition-colors ${getRowColor(row.status)}`}
     >
       <TableCell>
         <button
@@ -125,14 +145,14 @@ function SortableRow({ row, onEdit }: SortableRowProps) {
       <TableCell className="font-mono text-sm">{row.url || "-"}</TableCell>
       <TableCell>{row.sno}</TableCell>
       <TableCell className="font-semibold">{row.software}</TableCell>
-      <TableCell className="max-w-md">
-        <p className="truncate text-muted-foreground">{row.description}</p>
+      <TableCell className="min-w-[300px]">
+        <p className="text-muted-foreground">{row.description}</p>
       </TableCell>
       <TableCell>
         <StatusBadge variant={row.status}>{row.status}</StatusBadge>
       </TableCell>
-      <TableCell className="text-muted-foreground max-w-xs">
-        <p className="truncate">{row.lastUpdate || "-"}</p>
+      <TableCell className="text-muted-foreground min-w-[250px]">
+        {row.lastUpdate || "-"}
       </TableCell>
       <TableCell className="text-right">
         <Button
@@ -152,6 +172,21 @@ function SortableRow({ row, onEdit }: SortableRowProps) {
 export function SoftwareTable() {
   const [data, setData] = useState<SoftwareData[]>(initialData);
   const [searchTerm, setSearchTerm] = useState("");
+  const [columnFilters, setColumnFilters] = useState<{
+    url: string;
+    sno: string;
+    software: string;
+    description: string;
+    status: string;
+    lastUpdate: string;
+  }>({
+    url: "",
+    sno: "",
+    software: "",
+    description: "",
+    status: "",
+    lastUpdate: "",
+  });
   const [sortConfig, setSortConfig] = useState<{ key: keyof SoftwareData; direction: "asc" | "desc" } | null>(null);
   const [editingRow, setEditingRow] = useState<SoftwareData | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -190,12 +225,35 @@ export function SoftwareTable() {
   }, [data, sortConfig]);
 
   const filteredData = useMemo(() => {
-    return sortedData.filter((row) =>
-      Object.values(row).some((value) =>
+    return sortedData.filter((row) => {
+      const matchesSearch = Object.values(row).some((value) =>
         value.toString().toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    );
-  }, [sortedData, searchTerm]);
+      );
+      
+      const matchesColumnFilters = 
+        (columnFilters.url === "" || row.url.toLowerCase().includes(columnFilters.url.toLowerCase())) &&
+        (columnFilters.sno === "" || row.sno.toLowerCase().includes(columnFilters.sno.toLowerCase())) &&
+        (columnFilters.software === "" || row.software.toLowerCase().includes(columnFilters.software.toLowerCase())) &&
+        (columnFilters.description === "" || row.description.toLowerCase().includes(columnFilters.description.toLowerCase())) &&
+        (columnFilters.status === "" || row.status === columnFilters.status) &&
+        (columnFilters.lastUpdate === "" || row.lastUpdate.toLowerCase().includes(columnFilters.lastUpdate.toLowerCase()));
+      
+      return matchesSearch && matchesColumnFilters;
+    });
+  }, [sortedData, searchTerm, columnFilters]);
+
+  const clearFilters = () => {
+    setColumnFilters({
+      url: "",
+      sno: "",
+      software: "",
+      description: "",
+      status: "",
+      lastUpdate: "",
+    });
+  };
+
+  const hasActiveFilters = Object.values(columnFilters).some(filter => filter !== "");
 
   const handleEdit = (row: SoftwareData) => {
     setEditingRow({ ...row });
@@ -256,14 +314,22 @@ export function SoftwareTable() {
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search software..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex gap-2 flex-1">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search all columns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          {hasActiveFilters && (
+            <Button onClick={clearFilters} variant="outline" size="sm" className="gap-2">
+              <X className="h-4 w-4" />
+              Clear Filters
+            </Button>
+          )}
         </div>
         <Button onClick={handleExport} variant="outline" className="gap-2">
           <Download className="h-4 w-4" />
@@ -283,43 +349,153 @@ export function SoftwareTable() {
                 <TableRow className="bg-muted/50">
                   <TableHead className="w-12"></TableHead>
                   <TableHead className="font-semibold">
-                    <button
-                      onClick={() => handleSort("url")}
-                      className="flex items-center gap-1 hover:text-foreground transition-colors"
-                    >
-                      URL
-                      <ArrowUpDown className="h-3 w-3" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSort("url")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                      >
+                        URL
+                        <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Filter className={`h-3 w-3 ${columnFilters.url ? 'text-primary' : ''}`} />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60" align="start">
+                          <Input
+                            placeholder="Filter URL..."
+                            value={columnFilters.url}
+                            onChange={(e) => setColumnFilters({ ...columnFilters, url: e.target.value })}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </TableHead>
                   <TableHead className="font-semibold">
-                    <button
-                      onClick={() => handleSort("sno")}
-                      className="flex items-center gap-1 hover:text-foreground transition-colors"
-                    >
-                      SNo
-                      <ArrowUpDown className="h-3 w-3" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSort("sno")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                      >
+                        SNo
+                        <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Filter className={`h-3 w-3 ${columnFilters.sno ? 'text-primary' : ''}`} />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60" align="start">
+                          <Input
+                            placeholder="Filter SNo..."
+                            value={columnFilters.sno}
+                            onChange={(e) => setColumnFilters({ ...columnFilters, sno: e.target.value })}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </TableHead>
                   <TableHead className="font-semibold">
-                    <button
-                      onClick={() => handleSort("software")}
-                      className="flex items-center gap-1 hover:text-foreground transition-colors"
-                    >
-                      Software
-                      <ArrowUpDown className="h-3 w-3" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSort("software")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                      >
+                        Software
+                        <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Filter className={`h-3 w-3 ${columnFilters.software ? 'text-primary' : ''}`} />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60" align="start">
+                          <Input
+                            placeholder="Filter Software..."
+                            value={columnFilters.software}
+                            onChange={(e) => setColumnFilters({ ...columnFilters, software: e.target.value })}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </TableHead>
-                  <TableHead className="font-semibold">Description</TableHead>
                   <TableHead className="font-semibold">
-                    <button
-                      onClick={() => handleSort("status")}
-                      className="flex items-center gap-1 hover:text-foreground transition-colors"
-                    >
-                      Status
-                      <ArrowUpDown className="h-3 w-3" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      Description
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Filter className={`h-3 w-3 ${columnFilters.description ? 'text-primary' : ''}`} />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60" align="start">
+                          <Input
+                            placeholder="Filter Description..."
+                            value={columnFilters.description}
+                            onChange={(e) => setColumnFilters({ ...columnFilters, description: e.target.value })}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </TableHead>
-                  <TableHead className="font-semibold">Last Update</TableHead>
+                  <TableHead className="font-semibold">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSort("status")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                      >
+                        Status
+                        <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Filter className={`h-3 w-3 ${columnFilters.status ? 'text-primary' : ''}`} />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60" align="start">
+                          <Select
+                            value={columnFilters.status}
+                            onValueChange={(value) => setColumnFilters({ ...columnFilters, status: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="All statuses" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">All statuses</SelectItem>
+                              <SelectItem value="PRO">PRO</SelectItem>
+                              <SelectItem value="UAT">UAT</SelectItem>
+                              <SelectItem value="DEV">DEV</SelectItem>
+                              <SelectItem value="REQ">REQ</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </TableHead>
+                  <TableHead className="font-semibold">
+                    <div className="flex items-center gap-2">
+                      Last Update
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                            <Filter className={`h-3 w-3 ${columnFilters.lastUpdate ? 'text-primary' : ''}`} />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60" align="start">
+                          <Input
+                            placeholder="Filter Last Update..."
+                            value={columnFilters.lastUpdate}
+                            onChange={(e) => setColumnFilters({ ...columnFilters, lastUpdate: e.target.value })}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </TableHead>
                   <TableHead className="font-semibold text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
